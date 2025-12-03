@@ -63,14 +63,19 @@ function serveFile(res, filePath) {
 
 function openBrowser(url) {
   const platform = process.platform;
+  const command =
+    platform === 'win32'
+      ? ['cmd', ['/c', 'start', '', url]]
+      : platform === 'darwin'
+        ? ['open', [url]]
+        : ['xdg-open', [url]];
+
   try {
-    if (platform === 'win32') {
-      spawn('cmd', ['/c', 'start', '', url], { stdio: 'ignore', detached: true });
-    } else if (platform === 'darwin') {
-      spawn('open', [url], { stdio: 'ignore', detached: true });
-    } else {
-      spawn('xdg-open', [url], { stdio: 'ignore', detached: true });
-    }
+    const child = spawn(command[0], command[1], { stdio: 'ignore', detached: true });
+    child.on('error', err => {
+      console.warn('提示：自动打开浏览器失败，请手动访问链接。', err.message);
+    });
+    child.unref();
   } catch (err) {
     console.warn('提示：自动打开浏览器失败，请手动访问链接。', err.message);
   }

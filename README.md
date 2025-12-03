@@ -10,6 +10,7 @@ The first codex experimental project
    npm start
    ```
    - To skip auto-opening (e.g., CI), run `npm start -- --no-open` or set `OPEN_BROWSER=false`.
+   - If your OS is missing an opener like `xdg-open`, the server will keep running and log a hint to open the URL manually.
    - To restart without killing the process (handy when testing), press `r` in the terminal where it is running or send `SIGHUP`/`SIGUSR2` to the Node process.
 4. Open http://localhost:8000 to play (or use the forwarded preview link in your environment).
 
