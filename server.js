@@ -2,6 +2,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
+const readline = require('readline');
 const { URL } = require('url');
 
 const PORT = process.env.PORT || 8000;
@@ -75,37 +76,88 @@ function openBrowser(url) {
   }
 }
 
-const server = http.createServer((req, res) => {
-  const filePath = getFilePath(req.url);
+let hasOpened = false;
+let server;
+let restarting = false;
 
-  if (!filePath) {
-    return sendForbidden(res);
-  }
+function createServer() {
+  return http.createServer((req, res) => {
+    const filePath = getFilePath(req.url);
 
-  fs.stat(filePath, (err, stats) => {
-    if (!err && stats.isDirectory()) {
-      const indexPath = path.join(filePath, 'index.html');
-      return fs.access(indexPath, fs.constants.R_OK, accessErr => {
-        if (accessErr) {
-          return sendNotFound(res);
-        }
-        serveFile(res, indexPath);
-      });
+    if (!filePath) {
+      return sendForbidden(res);
     }
 
-    if (err) {
-      return sendNotFound(res);
-    }
+    fs.stat(filePath, (err, stats) => {
+      if (!err && stats.isDirectory()) {
+        const indexPath = path.join(filePath, 'index.html');
+        return fs.access(indexPath, fs.constants.R_OK, accessErr => {
+          if (accessErr) {
+            return sendNotFound(res);
+          }
+          serveFile(res, indexPath);
+        });
+      }
 
-    serveFile(res, filePath);
+      if (err) {
+        return sendNotFound(res);
+      }
+
+      serveFile(res, filePath);
+    });
   });
-});
+}
 
-server.listen(PORT, HOST, () => {
-  const displayHost = HOST === '0.0.0.0' ? 'localhost' : HOST;
-  const url = `http://${displayHost}:${PORT}`;
-  console.log(`Serenity Puzzle server running at ${url}`);
-  if (SHOULD_OPEN) {
-    openBrowser(url);
+function listen(currentServer) {
+  currentServer.listen(PORT, HOST, () => {
+    const addressInfo = currentServer.address();
+    const effectiveHost = HOST === '0.0.0.0' ? 'localhost' : addressInfo.address || HOST;
+    const url = `http://${effectiveHost}:${addressInfo.port}`;
+    console.log(`Serenity Puzzle server running at ${url}`);
+    if (SHOULD_OPEN && !hasOpened) {
+      openBrowser(url);
+      hasOpened = true;
+    }
+  });
+}
+
+function restartServer(reason = 'manual restart') {
+  if (!server || restarting) {
+    return;
   }
+
+  restarting = true;
+  console.log(`Restarting server (${reason})...`);
+  server.close(err => {
+    if (err) {
+      console.error('Error closing server during restart:', err.message);
+    }
+    server = createServer();
+    listen(server);
+    restarting = false;
+  });
+}
+
+function enableKeyboardRestart() {
+  if (!process.stdin.isTTY) return;
+
+  readline.emitKeypressEvents(process.stdin);
+  process.stdin.setRawMode(true);
+  console.log('Press "r" to restart without stopping the server, Ctrl+C to quit.');
+
+  process.stdin.on('keypress', (str, key) => {
+    if (key.name === 'r') {
+      restartServer('keypress');
+    } else if (key.ctrl && key.name === 'c') {
+      process.exit();
+    }
+  });
+}
+
+server = createServer();
+listen(server);
+enableKeyboardRestart();
+
+['SIGHUP', 'SIGUSR2'].forEach(signal => {
+  process.on(signal, () => restartServer(`${signal} received`));
 });
